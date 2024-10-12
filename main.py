@@ -11,6 +11,8 @@ import re
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_score, recall_score, f1_score
 from sklearn.metrics import classification_report
+from fastapi import FastAPI, File, UploadFile
+import io
 
 app = FastAPI()
 
@@ -98,37 +100,47 @@ def predict(text_input: TextInput):
     resultados = [{"clase_predicha": int(clase), "probabilidad": float(prob)} for clase, prob in zip(predicted_classes, probabilities)]
     return resultados
 
-@app.post("/retrain")
-def retrain(retrain_input: RetrainInput):
-    # Preprocess new data
-    nuevos_datos = pd.DataFrame({"Textos_espanol": retrain_input.textos, "sdg": retrain_input.sdg})
-    nuevos_datos['Textos_espanol'] = nuevos_datos['Textos_espanol'].apply(preprocess_text)
 
-    # Combine with existing training data
-    datos_completos = pd.concat([train, nuevos_datos], ignore_index=True)
+@app.post("/retrain")
+async def retrain(file: UploadFile = File(...)):
+    print("REENTRENANDO")
+    # Leer el contenido del archivo subido
+    contents = await file.read()
+    if file.filename.endswith('.csv'):
+        df_new = pd.read_csv(io.StringIO(contents.decode('utf-8')))
+    elif file.filename.endswith('.xlsx') or file.filename.endswith('.xls'):
+        df_new = pd.read_excel(io.BytesIO(contents))
+    else:
+        return {"error": "Formato de archivo no soportado. Por favor, sube un archivo CSV o Excel."}
+
+    # Validar que las columnas necesarias existen
+    if 'Textos_espanol' not in df_new.columns or 'sdg' not in df_new.columns:
+        return {"error": "El archivo debe contener las columnas 'Textos_espanol' y 'sdg'."}
+
+    # Preprocesar los nuevos datos
+    df_new['Textos_espanol'] = df_new['Textos_espanol'].apply(preprocess_text)
+
+    # Combinar con los datos de entrenamiento existentes
+    datos_completos = pd.concat([train, df_new], ignore_index=True)
     X = datos_completos['Textos_espanol']
     y = datos_completos['sdg']
 
-    # Split data for validation
+    # Dividir los datos para validación
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # Retrain the pipeline on the training data
+    # Reentrenar el modelo
     pipeline.fit(X_train, y_train)
 
-    # Predict on validation data
+    # Predecir y calcular métricas
     y_pred = pipeline.predict(X_val)
-
-    # Calculate performance metrics
     precision = precision_score(y_val, y_pred, average='weighted')
     recall = recall_score(y_val, y_pred, average='weighted')
     f1 = f1_score(y_val, y_pred, average='weighted')
 
-    # Retrain on the full dataset
-    pipeline.fit(X, y)
-
-    # Save the updated pipeline
+    
     joblib.dump(pipeline, 'pipeline.pkl')
 
+    # Retornar las métricas
     return {
         "precision": precision,
         "recall": recall,
