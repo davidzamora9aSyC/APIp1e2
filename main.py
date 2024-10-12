@@ -37,6 +37,8 @@ train = pd.read_excel('ODScat_345.xlsx')
 # Download NLTK data
 nltk.download('punkt')
 nltk.download('stopwords')
+nltk.download('punkt')
+nltk.download('punkt_tab')
 stop_words = set(nltk.corpus.stopwords.words('spanish'))
 
 # Load spaCy model
