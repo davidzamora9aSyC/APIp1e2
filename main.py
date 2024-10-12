@@ -84,6 +84,7 @@ class RetrainInput(BaseModel):
     textos: List[str]
     sdg: List[int]
 
+train['Textos_espanol'] = [preprocess_text(texto) for texto in train['Textos_espanol']]
 X_train, X_test, y_train, y_test = train_test_split(train['Textos_espanol'], train['sdg'], test_size=0.3, random_state=42)
 
 # Entrenar el modelo usando el pipeline
